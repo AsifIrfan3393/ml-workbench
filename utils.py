@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, RobustScaler
-from sklearn.feature_selection import SelectKBest, f_classif
 
 
 EXAMPLES_DIR = Path("data")
@@ -31,34 +30,31 @@ def get_example_datasets() -> Dict[str, Path]:
     }
 
 
-# 🔥 Better preprocessing
+# 🔥 FIXED preprocessing (no dtype crash)
 def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.copy()
 
     for col in cleaned.columns:
-        # 🔥 Check if numeric safely
         if pd.api.types.is_numeric_dtype(cleaned[col]):
             cleaned[col] = cleaned[col].fillna(cleaned[col].median())
         else:
-            # treat everything else as categorical
             cleaned[col] = cleaned[col].fillna(cleaned[col].mode()[0])
 
     return cleaned
 
 
-# 🔥 Encoding categorical features
+# 🔥 Better encoding (handles all non-numeric types)
 def encode_features(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
     encoded = df.copy()
 
     for col in columns:
-        if encoded[col].dtype == "object":
+        if not pd.api.types.is_numeric_dtype(encoded[col]):
             le = LabelEncoder()
             encoded[col] = le.fit_transform(encoded[col].astype(str))
 
     return encoded
 
 
-# 🚀 MAIN IMPROVED FUNCTION
 def prepare_supervised_data(
     df: pd.DataFrame,
     feature_cols: List[str],
@@ -73,7 +69,6 @@ def prepare_supervised_data(
     X = dataset[feature_cols].values
     y = dataset[target_col].values
 
-    # 🔥 Stratified split (important for classification)
     stratify = y if len(np.unique(y)) < 20 else None
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -83,13 +78,25 @@ def prepare_supervised_data(
         stratify=stratify
     )
 
-    # 🔥 Feature selection (boost accuracy)
-    if len(feature_cols) > 3:
-        selector = SelectKBest(score_func=f_classif, k=min(5, X_train.shape[1]))
-        X_train = selector.fit_transform(X_train, y_train)
-        X_test = selector.transform(X_test)
+    # 🔥 SAFE FEATURE SELECTION (no crash)
+    try:
+        from sklearn.feature_selection import SelectKBest, f_classif, f_regression
 
-    # 🔥 Better scaling (handles outliers better)
+        if len(feature_cols) > 3:
+            if len(np.unique(y_train)) < 20:
+                score_func = f_classif
+            else:
+                score_func = f_regression
+
+            selector = SelectKBest(score_func=score_func, k=min(5, X_train.shape[1]))
+
+            X_train = selector.fit_transform(X_train, y_train)
+            X_test = selector.transform(X_test)
+
+    except Exception as e:
+        print("Feature selection skipped:", e)
+
+    # 🔥 Scaling
     if scale:
         scaler = RobustScaler()
         X_train = scaler.fit_transform(X_train)
@@ -98,7 +105,6 @@ def prepare_supervised_data(
     return X_train, X_test, y_train, y_test
 
 
-# 🚀 Clustering improvement
 def prepare_clustering_data(
     df: pd.DataFrame,
     feature_cols: List[str],
