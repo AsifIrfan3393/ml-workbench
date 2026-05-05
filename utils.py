@@ -36,10 +36,12 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.copy()
 
     for col in cleaned.columns:
-        if cleaned[col].dtype == "object":
-            cleaned[col] = cleaned[col].fillna(cleaned[col].mode()[0])
-        else:
+        # 🔥 Check if numeric safely
+        if pd.api.types.is_numeric_dtype(cleaned[col]):
             cleaned[col] = cleaned[col].fillna(cleaned[col].median())
+        else:
+            # treat everything else as categorical
+            cleaned[col] = cleaned[col].fillna(cleaned[col].mode()[0])
 
     return cleaned
 
